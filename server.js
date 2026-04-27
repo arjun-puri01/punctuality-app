@@ -1071,9 +1071,9 @@ setTimeout(sendGatheringReminders, 15000);
 // Must come AFTER all /api routes so API paths are never swallowed.
 if (process.env.NODE_ENV === 'production') {
   const path = require('path');
-  app.use(express.static(path.join(__dirname, 'frontend', 'build')));
+  app.use(express.static(path.join(__dirname, 'public')));
   app.get('/{*path}', (_req, res) => {
-    res.sendFile(path.join(__dirname, 'frontend', 'build', 'index.html'));
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
   });
 }
 
