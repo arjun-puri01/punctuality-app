@@ -496,7 +496,7 @@ app.get('/api/users/search', async (req, res) => {
 // Save profile — enforces username uniqueness
 app.put('/api/users/profile', async (req, res) => {
   try {
-    const { name, username, email } = req.body;
+    const { name, username, email, phone } = req.body;
     const userId = req.uid;
     if (!name?.trim() || !username?.trim()) {
       return res.status(400).json({ error: 'Name and username are required' });
@@ -516,12 +516,34 @@ app.put('/api/users/profile', async (req, res) => {
       name: name.trim(),
       username: username.trim(),
       uid: userId,
-      ...(email ? { email } : {})
+      ...(email ? { email } : {}),
+      ...(phone ? { phone } : {})
     }, { merge: true });
 
     res.json({ success: true });
   } catch (error) {
     console.error('Error saving profile:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/users/find-by-phones', async (req, res) => {
+  try {
+    const { phones } = req.body;
+    if (!Array.isArray(phones) || phones.length === 0) return res.json([]);
+    const results = [];
+    const chunks = [];
+    for (let i = 0; i < phones.length; i += 10) chunks.push(phones.slice(i, i + 10));
+    for (const chunk of chunks) {
+      const snap = await db.collection('users').where('phone', 'in', chunk).get();
+      snap.forEach(doc => {
+        const d = doc.data();
+        if (d.uid !== req.uid) results.push({ uid: d.uid, name: d.name, username: d.username, phone: d.phone });
+      });
+    }
+    res.json(results);
+  } catch (error) {
+    console.error('Error finding by phones:', error);
     res.status(500).json({ error: error.message });
   }
 });
