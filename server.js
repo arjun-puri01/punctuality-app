@@ -343,6 +343,39 @@ app.post('/api/gatherings/:id/invite', async (req, res) => {
   }
 });
 
+// Public gathering info — no auth, for invite link previews
+app.get('/api/gatherings/:id/public', async (req, res) => {
+  try {
+    const doc = await db.collection('gatherings').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Gathering not found' });
+    const g = doc.data();
+    res.json({ id: doc.id, name: g.name, time: g.time, location: g.location, memberCount: (g.memberIds || []).length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Join via invite link — adds user to gathering if not already a member
+app.post('/api/gatherings/:id/join', async (req, res) => {
+  try {
+    const userId = req.uid;
+    const gatheringRef = db.collection('gatherings').doc(req.params.id);
+    const gatheringDoc = await gatheringRef.get();
+    if (!gatheringDoc.exists) return res.status(404).json({ error: 'Gathering not found' });
+    const gathering = gatheringDoc.data();
+    if ((gathering.memberIds || []).includes(userId)) return res.json({ success: true, alreadyMember: true });
+    const userDoc = await db.collection('users').doc(userId).get();
+    const name = userDoc.exists ? (userDoc.data().name || 'Unknown') : 'Unknown';
+    await gatheringRef.update({
+      members: [...(gathering.members || []), { uid: userId, name, arrivedAt: null, isOnTime: null }],
+      memberIds: [...(gathering.memberIds || []), userId],
+    });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/gatherings/:id/leave', async (req, res) => {
   try {
     const userId = req.uid;
