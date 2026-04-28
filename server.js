@@ -789,6 +789,31 @@ app.get('/api/friends', async (req, res) => {
   }
 });
 
+// ── Reactions ─────────────────────────────────────────────────────────────────
+
+app.post('/api/gatherings/:id/react', async (req, res) => {
+  try {
+    const { emoji } = req.body;
+    const ALLOWED = ['👍', '🔥', '💀', '😂', '👏'];
+    if (!ALLOWED.includes(emoji)) return res.status(400).json({ error: 'Invalid reaction' });
+    const ref = db.collection('gatherings').doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Not found' });
+    const reactions = doc.data().reactions || {};
+    if (!reactions[emoji]) reactions[emoji] = [];
+    if (reactions[emoji].includes(req.uid)) {
+      reactions[emoji] = reactions[emoji].filter(u => u !== req.uid);
+    } else {
+      reactions[emoji].push(req.uid);
+    }
+    await ref.update({ reactions });
+    res.json({ reactions });
+  } catch (error) {
+    console.error('Error reacting:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ── Activity feed ─────────────────────────────────────────────────────────────
 
 app.get('/api/activity', async (req, res) => {
