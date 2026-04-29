@@ -49,6 +49,18 @@ async function verifyAuth(req, res, next) {
   }
 }
 
+// Public gathering info — no auth, for invite link previews
+app.get('/api/gatherings/:id/public', async (req, res) => {
+  try {
+    const doc = await db.collection('gatherings').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Gathering not found' });
+    const g = doc.data();
+    res.json({ id: doc.id, name: g.name, time: g.time, location: g.location, memberCount: (g.memberIds || []).length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.use('/api', verifyAuth);
 
 // Haversine distance in meters between two lat/lng points
@@ -243,7 +255,7 @@ app.post('/api/gatherings/:id/checkin', async (req, res) => {
     let pointsDelta;
     if (isOnTime) {
       pointsDelta = 10;
-    } else if (lateMinutes <= 15) {
+    } else if (lateMinutes === 0 || lateMinutes <= 15) {
       pointsDelta = -2;
     } else if (lateMinutes <= 30) {
       pointsDelta = -5;
@@ -304,8 +316,14 @@ app.put('/api/gatherings/:id', async (req, res) => {
     if (!gatheringDoc.exists) return res.status(404).json({ error: 'Gathering not found' });
     if (gatheringDoc.data().userId !== userId) return res.status(403).json({ error: 'Only the creator can edit this gathering' });
 
-    await gatheringRef.update({ name, time, location, lat: lat ?? null, lng: lng ?? null });
-    res.json({ id: req.params.id, ...gatheringDoc.data(), name, time, location, lat, lng });
+    const existing = gatheringDoc.data();
+    const timeChanged = existing.time !== time;
+    await gatheringRef.update({
+      name, time, location, lat: lat ?? null, lng: lng ?? null,
+      ...(timeChanged && { remindersSent: [] }),
+    });
+    const updated = await gatheringRef.get();
+    res.json({ id: req.params.id, ...updated.data() });
   } catch (error) {
     console.error('Error editing gathering:', error);
     res.status(500).json({ error: error.message });
@@ -353,18 +371,6 @@ app.post('/api/gatherings/:id/invite', async (req, res) => {
     res.json({ id: req.params.id, ...gathering, members: updatedMembers, memberIds: updatedMemberIds });
   } catch (error) {
     console.error('Error adding members:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Public gathering info — no auth, for invite link previews
-app.get('/api/gatherings/:id/public', async (req, res) => {
-  try {
-    const doc = await db.collection('gatherings').doc(req.params.id).get();
-    if (!doc.exists) return res.status(404).json({ error: 'Gathering not found' });
-    const g = doc.data();
-    res.json({ id: doc.id, name: g.name, time: g.time, location: g.location, memberCount: (g.memberIds || []).length });
-  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
@@ -424,6 +430,44 @@ app.delete('/api/gatherings/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting gathering:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── Live location sharing ─────────────────────────────────────────────────────
+
+// Store current location for live tracking (during the hour before a gathering)
+app.post('/api/gatherings/:id/location', async (req, res) => {
+  try {
+    const { lat, lng } = req.body;
+    if (typeof lat !== 'number' || typeof lng !== 'number') {
+      return res.status(400).json({ error: 'lat and lng are required numbers' });
+    }
+    const gatheringRef = db.collection('gatherings').doc(req.params.id);
+    const doc = await gatheringRef.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Gathering not found' });
+    if (!(doc.data().memberIds || []).includes(req.uid)) {
+      return res.status(403).json({ error: 'Not a member of this gathering' });
+    }
+    await gatheringRef.update({
+      [`liveLocations.${req.uid}`]: { lat, lng, updatedAt: new Date().toISOString() }
+    });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all member live locations for a gathering
+app.get('/api/gatherings/:id/locations', async (req, res) => {
+  try {
+    const doc = await db.collection('gatherings').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Gathering not found' });
+    if (!(doc.data().memberIds || []).includes(req.uid)) {
+      return res.status(403).json({ error: 'Not a member of this gathering' });
+    }
+    res.json(doc.data().liveLocations || {});
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
