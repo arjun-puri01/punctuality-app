@@ -23,6 +23,7 @@ const db = admin.firestore();
 
 app.use(cors({ origin: process.env.ALLOWED_ORIGIN || '*' }));
 app.use(express.json());
+app.set('trust proxy', 1);
 
 // Rate limiting — 200 requests per 15 minutes per IP
 const limiter = rateLimit({
