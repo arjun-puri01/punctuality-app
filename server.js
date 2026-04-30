@@ -1170,6 +1170,36 @@ app.get('/api/challenges', async (req, res) => {
   }
 });
 
+// Friends' challenge completion for the current week
+app.get('/api/challenges/friends', async (req, res) => {
+  try {
+    const userId = req.uid;
+    const { start } = getWeekBounds();
+    const weekKey = `challenges_${start.toISOString().slice(0, 10)}`;
+
+    const friendsSnap = await db.collection('friends')
+      .where('users', 'array-contains', userId)
+      .get();
+
+    const uids = [userId];
+    friendsSnap.forEach(doc => {
+      if (doc.data().status === 'accepted')
+        uids.push(doc.data().users.find(u => u !== userId));
+    });
+
+    const results = await Promise.all(uids.map(async uid => {
+      const doc = await db.collection('users').doc(uid).get();
+      if (!doc.exists) return null;
+      const d = doc.data();
+      return { uid, name: d.name || 'Unknown', photoUrl: d.photoUrl || null, completed: (d[weekKey] || []).length, isYou: uid === userId };
+    }));
+
+    res.json(results.filter(Boolean).sort((a, b) => b.completed - a.completed));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Auto-late job ──────────────────────────────────────────────────────────────
 
 async function processAutoLate() {
