@@ -50,6 +50,22 @@ async function verifyAuth(req, res, next) {
   }
 }
 
+// Web join page — served to people who don't have the app yet
+app.get('/join/:id', async (req, res) => {
+  try {
+    const doc = await db.collection('gatherings').doc(req.params.id).get();
+    const g = doc.exists ? doc.data() : null;
+    const name = g ? g.name : 'A Gathering';
+    const time = g ? new Date(g.time).toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+    const location = g?.location || '';
+    const count = g ? (g.memberIds || []).length : 0;
+    const deepLink = `clocked://join/${req.params.id}`;
+    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${name} · Clocked</title><meta http-equiv="refresh" content="0;url=${deepLink}"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#000;color:#fff;font-family:-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#0c0c0c;border-radius:28px;padding:40px 32px;max-width:360px;width:100%;text-align:center}.pill{background:rgba(124,58,237,.15);color:#a78bfa;font-size:12px;font-weight:700;padding:6px 14px;border-radius:99px;display:inline-block;margin-bottom:20px}.title{font-size:28px;font-weight:800;letter-spacing:-.8px;margin-bottom:8px}.meta{color:rgba(255,255,255,.45);font-size:14px;margin-bottom:4px}.btn{display:block;background:#7c3aed;color:#fff;font-size:16px;font-weight:700;padding:16px;border-radius:16px;text-decoration:none;margin-top:28px}p{color:rgba(255,255,255,.3);font-size:12px;margin-top:16px}</style></head><body><div class="card"><div class="pill">You're invited</div><div class="title">${name}</div>${time ? `<div class="meta">${time}</div>` : ''}${location ? `<div class="meta">${location}</div>` : ''}<div class="meta" style="margin-top:8px">${count} going</div><a class="btn" href="${deepLink}">Open in Clocked</a><p>Don't have the app? Search "Clocked" in the App Store.</p></div></body></html>`);
+  } catch {
+    res.redirect(`clocked://join/${req.params.id}`);
+  }
+});
+
 // Public gathering info — no auth, for invite link previews
 app.get('/api/gatherings/:id/public', async (req, res) => {
   try {
